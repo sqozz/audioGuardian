@@ -14,13 +14,16 @@ mpd_client = MPDClient()
 while True:
 	try:
 		buffer = os.read(io, 1024)
+		buffer_filled = False
+		for byte in buffer:
+			buffer_filled |= byte
 	except OSError as err:
 		if err.errno == errno.EAGAIN or err.errno == errno.EWOULDBLOCK: # buffer empty
 			buffer = None
 		else:
 			raise  # something else has happened -- better reraise
 
-	if buffer is None and last_recv + 2 <= time.time(): # give the socket 2 seconds time before checking the mpd status
+	if not buffer_filled and last_recv + 2 <= time.time(): # give the socket 2 seconds time before checking the mpd status
 		try:
 			mpd_client.connect("localhost", 6600)
 		except ConnectionError as err:
@@ -32,6 +35,7 @@ while True:
 		status = mpd_client.status()
 		if status["state"] == "play":
 			# mpd is playing but no data flowing? Quick, recover!
+			print("stall detected, resetting")
 			mpd_client.stop()
 			mpd_client.play()
 			# TODO: make this smarter and escalate after some tries and restart mpd
@@ -43,7 +47,7 @@ while True:
 			# TODO: stall/idle until MPD awakes again to avoid looping to much
 			sleep(0.5) # for now we just sleep
 
-	if buffer is not None:
+	if buffer_filled:
 		# everything is good
 		last_recv = time.time()
 		pass
